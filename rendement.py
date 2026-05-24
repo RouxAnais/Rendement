@@ -3,7 +3,6 @@ import pandas as pd
 import plotly.express as px
 from io import BytesIO
 import tempfile
-import os
 
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Image,
@@ -16,34 +15,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # ---------------- CONFIG ----------------
 
-LOGO_PATH = "ntn-logo.png"
-
-st.set_page_config(
-    page_title="Efficiency Analysis",
-    page_icon="📊",
-    layout="wide"
-)
-
-# ---------------- STREAMLIT HEADER ----------------
-
-col_logo, col_title = st.columns([1, 5])
-
-with col_logo:
-    if os.path.exists(LOGO_PATH):
-        st.image(LOGO_PATH, width=130)
-
-with col_title:
-    st.markdown(
-        """
-        <h1 style='color:#1f77b4; margin-bottom:0;'>
-            Efficiency Analysis Comparison
-        </h1>
-        <p style='font-size:20px; color:#555555;'>
-            Comparison of upward and downward efficiency
-        </p>
-        """,
-        unsafe_allow_html=True
-    )
+st.title("Efficiency Analysis")
+st.write("Diversification - NTN Europe")
 
 uploaded_files = st.file_uploader(
     "Upload your CSV files",
@@ -108,7 +81,6 @@ def calculate_stats(df):
 
     q_low = df["Upward"].quantile(0.05)
     q_high = df["Upward"].quantile(0.95)
-
     df_up_clean = df[
         (df["Upward"] >= q_low) &
         (df["Upward"] <= q_high)
@@ -116,7 +88,6 @@ def calculate_stats(df):
 
     q_low = df["Downward"].quantile(0.05)
     q_high = df["Downward"].quantile(0.95)
-
     df_down_clean = df[
         (df["Downward"] >= q_low) &
         (df["Downward"] <= q_high)
@@ -127,43 +98,6 @@ def calculate_stats(df):
 
     return average_upward, average_downward
 
-
-def create_figure(df, title):
-
-    fig = px.line(
-        df,
-        x="Time",
-        y=["Upward", "Downward"],
-        labels={
-            "value": "Efficiency",
-            "variable": "Direction"
-        },
-        title=title,
-        color_discrete_map={
-            "Upward": "#1f77b4",
-            "Downward": "#d62728"
-        }
-    )
-
-    fig.update_layout(
-        title_font_size=18,
-        title_font_color="#1f77b4",
-        legend_title_text="Direction",
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        xaxis_title="Time",
-        yaxis_title="Efficiency",
-        font=dict(size=12),
-        margin=dict(l=40, r=40, t=60, b=40)
-    )
-
-    fig.update_xaxes(showgrid=True, gridcolor="#e6e6e6")
-    fig.update_yaxes(showgrid=True, gridcolor="#e6e6e6")
-
-    return fig
-
-
-# ---------------- MAIN ----------------
 
 if uploaded_files:
 
@@ -183,7 +117,21 @@ if uploaded_files:
             continue
 
         average_upward, average_downward = calculate_stats(df)
-        fig = create_figure(df, file.name)
+
+        fig = px.line(
+            df,
+            x="Time",
+            y=["Upward", "Downward"],
+            labels={
+                "value": "Efficiency",
+                "variable": "Direction"
+            },
+            title=file.name,
+            color_discrete_map={
+                "Upward": "#A0AEC0",
+                "Downward": "#E53935"
+            }
+        )
 
         tabs[i].plotly_chart(fig, use_container_width=True)
 
@@ -196,11 +144,17 @@ if uploaded_files:
             value=f"{average_upward:.2f} %"
         )
 
-        col2.metric(
-            label="Average downward efficiency",
-            value=f"{average_downward:.2f} %"
+        col2.markdown(
+            f"""
+            Average downward efficiency  
+            <span style='color:red; font-size:32px; font-weight:bold;'>
+            {average_downward:.2f} %
+            </span>
+            """,
+            unsafe_allow_html=True
         )
 
+      
         results.append({
             "File": file.name,
             "Average upward efficiency (%)": round(average_upward, 2),
@@ -218,7 +172,7 @@ if uploaded_files:
     results_df = pd.DataFrame(results)
 
     st.subheader("Summary table")
-    st.dataframe(results_df, use_container_width=True)
+    st.dataframe(results_df)
 
     # ---------------- EXCEL EXPORT ----------------
 
@@ -287,14 +241,7 @@ if uploaded_files:
     )
 
     elements = []
-
-    # Logo PDF
-    if os.path.exists(LOGO_PATH):
-        logo = Image(LOGO_PATH)
-        logo.drawWidth = 90
-        logo.drawHeight = 35
-        elements.append(logo)
-        elements.append(Spacer(1, 8))
+  
 
     elements.append(
         Paragraph("Efficiency Analysis Report", title_style)
@@ -324,16 +271,16 @@ if uploaded_files:
     table_data = [
         [
             "File",
-            "Average upward efficiency (%)",
-            "Average downward efficiency (%)"
+            "DOWNWARD efficiency (%)",
+            "Upward efficiency (%)"
         ]
     ]
 
     for _, row in results_df.iterrows():
         table_data.append([
             row["File"],
-            row["Average upward efficiency (%)"],
-            row["Average downward efficiency (%)"]
+            row["Average downward efficiency (%)"],
+            row["Average upward efficiency (%)"]
         ])
 
     table = Table(
@@ -376,8 +323,14 @@ if uploaded_files:
 
         stats_table_data = [
             ["Indicator", "Value"],
-            ["Average upward efficiency", f"{item['average_upward']:.2f} %"],
-            ["Average downward efficiency", f"{item['average_downward']:.2f} %"]
+            [
+                "DOWNWARD efficiency",
+                f"{item['average_downward']:.2f} %"
+            ],
+            [
+                "Upward efficiency",
+                f"{item['average_upward']:.2f} %"
+            ]
         ]
 
         stats_table = Table(
@@ -398,6 +351,10 @@ if uploaded_files:
 
             ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+
+            ("TEXTCOLOR", (1, 1), (1, 1), colors.HexColor("#E53935")),
+            ("FONTNAME", (1, 1), (1, 1), "Helvetica-Bold"),
+            ("FONTSIZE", (1, 1), (1, 1), 11),
         ]))
 
         chart_block.append(stats_table)
