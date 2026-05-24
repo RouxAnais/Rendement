@@ -2,13 +2,19 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-st.title("Analyse de rendement - Montée / Descente")
+st.title("Analyse de rendement (comparaison)")
 
-uploaded_file = st.file_uploader("Dépose ton fichier CSV :", type=["csv"])
+# Upload multiple fichiers (illimité)
+uploaded_files = st.file_uploader(
+    "Déposez vos fichiers CSV",
+    type=["csv"],
+    accept_multiple_files=True
+)
 
-if uploaded_file is not None:
+# Fonction de lecture + nettoyage
+def charger_fichier(uploaded_file):
 
-    # 1) Première lecture brute pour trouver la ligne "Temps"
+    # Lecture brute pour trouver la ligne "Temps"
     df_brut = pd.read_csv(
         uploaded_file,
         sep=";",
@@ -20,13 +26,11 @@ if uploaded_file is not None:
     ligne_temps = df_brut[df_brut[0] == "Temps"].index
 
     if len(ligne_temps) == 0:
-        st.error("Impossible de trouver la colonne 'Temps' dans le fichier.")
-        st.stop()
+        return None
 
-    # Remettre le curseur au début du fichier
     uploaded_file.seek(0)
 
-    # 2) Deuxième lecture à partir de la bonne ligne
+    # Lecture propre
     df = pd.read_csv(
         uploaded_file,
         sep=";",
@@ -34,7 +38,7 @@ if uploaded_file is not None:
         skiprows=ligne_temps[0]
     )
 
-    # Renommage des colonnes
+    # Renommage colonnes
     df.columns = [
         "Temps",
         "Couple_0_5",
@@ -51,62 +55,66 @@ if uploaded_file is not None:
 
     df.columns = df.columns.str.strip()
 
-    df["Montée"] = df["Montée"].astype(str).str.replace(",", ".", regex=False)
-    df["Descente"] = df["Descente"].astype(str).str.replace(",", ".", regex=False)
-    df["Temps"] = df["Temps"].astype(str).str.replace(",", ".", regex=False)
+    # Conversion numérique
+    for col in ["Temps", "Montée", "Descente"]:
+        df[col] = (
+            df[col]
+            .astype(str)
+            .str.replace(",", ".", regex=False)
+        )
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    df["Montée"] = pd.to_numeric(df["Montée"], errors="coerce")
-    df["Descente"] = pd.to_numeric(df["Descente"], errors="coerce")
-    df["Temps"] = pd.to_numeric(df["Temps"], errors="coerce")
-
-    # Nettoyage
+    # Nettoyage valeurs aberrantes
     df.loc[df["Montée"] > 1, "Montée"] = None
     df.loc[df["Descente"] > 1, "Descente"] = None
 
-    tab1, tab2, tab3 = st.tabs(["Rendement", "Montée filtrée", "Descente filtrée"])
+    return df
 
-    fig1 = px.line(
-        df,
-        x="Temps",
-        y=["Montée", "Descente"],
-        labels={"value": "Rendement", "variable": "Type"},
-        title="Rendement Montée + Descente"
-    )
-    tab1.plotly_chart(fig1, use_container_width=True)
 
-    fig2 = px.line(
-        df,
-        x="Temps",
-        y="Montée",
-        labels={"Montée": "Rendement montée"},
-        title="Rendement Montée filtrée"
-    )
-    tab2.plotly_chart(fig2, use_container_width=True)
+# ---------------- code principal ----------------
 
-    fig3 = px.line(
-        df,
-        x="Temps",
-        y="Descente",
-        labels={"Descente": "Rendement descente"},
-        title="Rendement Descente filtrée"
-    )
-    tab3.plotly_chart(fig3, use_container_width=True)
+if uploaded_files:
 
-    # Stats
-    q_low = df["Montée"].quantile(0.05)
-    q_high = df["Montée"].quantile(0.95)
-    df_monte_clean = df[(df["Montée"] >= q_low) & (df["Montée"] <= q_high)]
+    st.success(f"{len(uploaded_files)} fichier(s) chargé(s)")
 
-    q_low = df["Descente"].quantile(0.05)
-    q_high = df["Descente"].quantile(0.95)
-    df_desc_clean = df[(df["Descente"] >= q_low) & (df["Descente"] <= q_high)]
+    tabs = st.tabs([f"Fichier {i+1}" for i in range(len(uploaded_files))])
 
-    moyenne_montee = df_monte_clean["Montée"].mean() * 100
-    moyenne_descente = df_desc_clean["Descente"].mean() * 100
+    for i, file in enumerate(uploaded_files):
 
-    st.subheader("Statistiques")
-    st.write("Moyenne montée :", moyenne_montee)
-    st.write("Moyenne descente :", moyenne_descente)
+        df = charger_fichier(file)
+
+        if df is None:
+            tabs[i].error("Impossible de lire le fichier.")
+            continue
+
+        # Graphique
+        fig = px.line(
+            df,
+            x="Temps",
+            y=["Montée", "Descente"],
+            labels={"value": "Rendement", "variable": "Type"},
+            title=file.name
+        )
+
+        tabs[i].plotly_chart(fig, use_container_width=True)
+
+        # Statistiques montée
+        q_low = df["Montée"].quantile(0.05)
+        q_high = df["Montée"].quantile(0.95)
+        df_monte_clean = df[(df["Montée"] >= q_low) & (df["Montée"] <= q_high)]
+
+        # Statistiques descente
+        q_low = df["Descente"].quantile(0.05)
+        q_high = df["Descente"].quantile(0.95)
+        df_desc_clean = df[(df["Descente"] >= q_low) & (df["Descente"] <= q_high)]
+
+        moyenne_montee = df_monte_clean["Montée"].mean() * 100
+        moyenne_descente = df_desc_clean["Descente"].mean() * 100
+
+        tabs[i].subheader("Statistiques")
+
+        tabs[i].write(f"Moyenne montée : {moyenne_montee:.2f} %")
+        tabs[i].write(f"Moyenne descente : {moyenne_descente:.2f} %")
 
 else:
-    st.info("Veuillez importer un fichier CSV pour lancer l'analyse.")
+    st.info("Importe un ou plusieurs fichiers CSV pour commencer l'analyse.")
